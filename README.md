@@ -4,10 +4,10 @@ NOTE: This is an educational repository with demo code. This code is NOT meant f
 
 Open `blog.md` for the writeup associated with this repo.
 
-###Running the Demo
+### Running the Demo
 
 Running the server followed by running the client will result in the server being exploited.
-Note the code here only uses Java 8, but this example runs just fine on Java 11 - albeit with illegal reflective access warnings.
+Note the code here only uses Java 8, but this example runs just fine on Java 11.
 Change the `COMMAND` string in `Client.java` to be the command you want the server to execute.
 It is currently set to the location of the calculator binary on MacOS. 
 
