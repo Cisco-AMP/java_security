@@ -2,7 +2,7 @@
 If you want to go straight to code or prefer to read this in markdown, head to [our repo](https://github.com/Cisco-AMP/java_security).
 
 This post is meant to be a gateway of sorts for Java developers into security.
-Many topics and attacks in computer security rely on intimate knowledge of some unfamiliar technology (e.g. computer architecture).
+Many topics and attacks in computer security rely on intimate knowledge of some unfamiliar technology (e.g. computer architecture, asm).
 Therefore, it is sometimes a little overwhelming.
 We will see that security bugs and exploits leading to remote code execution are possible with relatively simple Java code.
 
@@ -164,14 +164,11 @@ public String submit(HttpServletRequest requestEntity) throws IOException, Class
 
 There would probably be a bunch of other logic in a real application. 
 This serves as a fairly realistic example though.
-The incoming bytes are deserialized, we do something with the object (call `toString` in this case) and return some something back in the HTTP response.
-
+We deserialize the incoming bytes, do something with the object (call `toString` in this case) and return something back in the HTTP response.
 
 However this small amount of server-side code is enough to introduce a vulnerability.
 The sin we committed is not validating user input.
 We take bytes that the user sends us and trust that they are what we expect them to be - a well-behaved instance of `Submission`.
-
-We will come back to the server code at the end and look at ways to improve it.
 
 ### Exploit Development
 We will develop a client that will craft and send an exploit to the server.
@@ -184,16 +181,16 @@ By crafting a special submission (our exploit), we should be able to abuse the i
 This is where polymorphism and reflection come into play.
 We will be able to trick the the server into executing code we dictate by using these two concepts.
 
-#### Polymorphic Exploit Try
+#### Polymorphic Exploit (Attempt)
 
 First, notice that the `Submission` class has a `Collection<String>` member.
-Since collection is an interface, it's effectively saying that it doesn't care what type of `Collection` it is - any implementation will do.
+Since `Collection` is an interface, it is effectively saying that it doesn't care what type of `Collection` it is - any implementation will do.
 This makes some sense since the result will be the same with `ArrayList<String>`, `HashSet<String>` and other normal implementations of `Collection`.
 What if it isn't a normal collection implementation?
 What if an attacker supplied a custom collection with the behavior they want?
 That is exactly what we will try to do.
 
-The rest of this post will use client code that looks like this.
+The rest of this post will use client code that looks like this (full source in [our repo](https://github.com/Cisco-AMP/java_security)).
 ```java
 Submission submission = new Submission(makeExploitCollection());
 
@@ -267,10 +264,10 @@ With our previous `Collection` implementation, the server wouldn't run the custo
 This means that we can't send new code to the server.
 We must only use code that is already on the server.
 That is, we can only use classes that the server has on its classpath.
-The question then becomes "how can we make a custom `Collection` implementation without requiring the server to execute new code that we write?".
+The challenge is creating a custom `Collection` implementation without requiring the server to execute code that it doesn't already have.
 Reflection provides a solution here.
 
-For this next part, we're going to assume that the follwing dependency is present in the server.
+Going forward, we will assume that the following dependency is present in the server.
 ```xml
 <dependency>
     <groupId>org.codehaus.groovy</groupId>
@@ -279,11 +276,10 @@ For this next part, we're going to assume that the follwing dependency is presen
 </dependency>
 ```
 This is a little contrived, but not unreasonable considering that modern web apps are usually library soup.
-Additionally, bringing this dependency in will make this section much simpler.
+Additionally, bringing the dependency in will make this section much simpler.
 
-The idea here is to use reflection to implement our exploit `Collection`.
-We'll use the technique from the reflection recap section.
-The exploit creation method will look something like this.
+The idea here is to use reflection to implement our exploit `Collection` in a manner similar to the recap section.
+Therefore, the exploit creation method will look something like this.
 ```java
 private static Collection<String> makeExploitCollection() {
 
@@ -302,11 +298,11 @@ Remember that we can't just make our own implementation of one.
 We can only use code on the server for this exploit.
 This is where the `groovy-all` dependency comes in.
 It contains two very useful classes: `org.codehaus.groovy.runtime.ConvertedClosure` and `org.codehaus.groovy.runtime.MethodClosure`.
-`ConvertedClosure` facilitates the reflective implementation of a class method with a `Closure` (like a Java lambda) you contruct it with.
-`MethodClosure` provides a `Closure` implementation for running a command (like launching calculator).
+`ConvertedClosure` facilitates the reflective implementation of a class method with a `Closure` (like a Java lambda) you construct it with.
+`MethodClosure` provides a `Closure` implementation for running a system command (like launching calculator).
 They both implement `Serializable`.
 
-Now, our reflective `Collection` implementation , with `Collection::iterator` overwritten, can be made like this.
+Now, our reflective `Collection` implementation , with `Collection::iterator` overwritten, can constructed like this.
 ```java
 private static Collection<String> makeExploitCollection() {
 
@@ -320,44 +316,51 @@ private static Collection<String> makeExploitCollection() {
     return exploitCollection;
 }
 ```
+Note that we are not creating new code for the server to execute.
+We are combining classes it already has.
 
-This is code given in the demo repository.
+All this is code given in [our repo](https://github.com/Cisco-AMP/java_security).
 If you run the demo, the server will launch calculator.
-There is also another exception printed to the server logs.
-We would need a higher quality exploit to avoid the exception if we cared about stealth.
+When you run it, there is another exception printed to the server logs even though the exploit works.
+We would need a higher quality exploit to avoid the exception printing if we cared about stealth.
 
 ### Server Code Improvements
 
-Now we have seen the path to successfully exploit this demo server.
-There were a few things that had to go right on the way for the exploit to work.
-We'll go through them here are briefly look at how they could be applied to secure the demo server.
+We have seen the path to successfully exploit the demo server.
+After going through an exercise like this, we can better understand what would have stopped or made the attack more difficult.
+We'll go through some possible changes here and briefly describe how they could benefit the demo server.
 
 #### Validate User Input
 The big sin committed in the server code was not validating user input.
 Generally, this isn't something that you want to do yourself.
-Using a library or framework willgive much better results as there will be edge cases that you don't think of.
+Using a library or framework will give much better results as there will be edge cases that you don't think of.
 However, in this scenario a couple things that might help are:
-* only accept one specific collection implementation
-* ensure the `Collection` implementation and `Submission` are declared `final` in their class definitions
-* don't use generics in the definition of concrete classes that will be serialized
+* Only accept one specific collection implementation.
+* Ensure the `Collection` implementation and `Submission` are declared `final` in their class definitions.
+* Don't use generics in the definition of concrete classes that will be serialized. We didn't see why in this exercise, but you might able to figure it out after reading about [Java type erasure](https://docs.oracle.com/javase/tutorial/java/generics/erasure.html).
+* ***This list is not exhaustive by any means.***
 
-***This list is not exhaustive by any means.***
+These suggestions focus on preventing an attacker from supplying a class of their own design.
+Input validation is an extremely important measure to take in general though.
+Proper input validation can safe guard against common attacks (e.g. SQL injection). 
 
 #### Avoid Java Serialization
-This sort of ties into validating user input.
+This ties into validating user input.
 Java Serialization is a really powerful serialization technique with many features.
 It is often overkill and a more restrictive serialization method (e.g. JSON) would usually work just as well.
 Using and validating against a more restrictive serialization standard gives an attacker less wiggle room.
+In the demo, a JSON document containing an array would allow us to accept a collection of `Strings` in a much safer manner.
 
 #### Better Manage Dependencies
-In the demo, we used `groovy-all` to craft our exploit.
+In the demo, we used classes from `groovy-all` to craft our exploit.
 This was an unnecessary dependency for our server, which means it should be removed.
-This again, gives an attacker less to work with.
+Removing unnecessary dependencies gives an attacker less to work with.
 
 If a dependency is needed, then it should be kept up to date.
+Generally, the latest bug fix release will do, as long as the major version being used is still supported.
 This also applies to the `groovy-all` dependency.
 Newer versions contain safeguards so `ConvertedClosure` and `MethodClosure` can't be abused like in the demo.
-Generally, the latest bug fix release will do as long as the major version being used is still supported.
+You can read about the groovy safeguards [here](http://groovy-lang.org/security.html).
 
 #### Use Minimal Permissions
 If you run the demo and look at a process tree listing, then it will look something like this.
