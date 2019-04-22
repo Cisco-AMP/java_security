@@ -6,24 +6,24 @@ Many topics and attacks in computer security rely on intimate knowledge of some 
 Therefore, it is sometimes a little overwhelming.
 We will see that security bugs and exploits leading to remote code execution are possible with relatively simple Java code.
 
-First, we will recap some relevant Java features (polymorphism, serialization and reflection).
+First, we will recap some relevant Java features (serialization, polymorphism and reflection).
 Then we'll dive into a demo that demonstrates a particular Java security hole which uses these features.
 Finally, we'll talk about lessons which can be applied to make your code more secure.
 
 ## Java Feature Review
 
 ### Polymorphism
-Polymorphism or "One interface, many implementations" is a major feature of object-oriented programming languages.
+Polymorphism or "one interface, many implementations" is a major feature of object-oriented programming languages.
 Java supports this behavior with interfaces, abstract classes and concrete classes.
 
 The `java.util.Map` interface is a good example to study.
 This interface defines method signatures that a class needs to implement in order to be considered a `Map`.
-The Java standard library includes a few implementations of this interface like `java.util.HashMap` or its threadsafe equivalent `java.util.concurrent.ConcurrentHashMap`.
+The Java standard library includes a few implementations of this interface like `java.util.HashMap` or its thread-safe equivalent `java.util.concurrent.ConcurrentHashMap`.
 Again, one interface, many implementations.
 
 We could even make our own `Map` implementation.
 ```java
-public class IntegerToStringMap implements Map<Integer,String> { ... }
+public class IntegerToStringMap implements Map<Integer, String> { ... }
 ```
 If we find that `IntegerToStringMap` has functionality that we want to reuse then we can extend it to make more `Map` implementations.
 ```java
@@ -34,7 +34,7 @@ public class YetAnotherMap extends IntegerToStringMap { ... }
 What if we wanted to prevent this?
 Java allows you to specify that a concrete class should not be extended with the `final` keyword.
 ```java
-public final class IntegerToStringMap implements Map<Integer,String> { ... }
+public final class IntegerToStringMap implements Map<Integer, String> { ... }
 ```
 This would stop `AnotherMap` and `YetAnotherMap` from being accepted by the Java compiler or JVM.
 
@@ -52,8 +52,8 @@ useMap(map2);
 This is particularly useful since we can write the `useMap` method without caring  which `Map` implementation is passed into the method.
 
 ### Serialization
-Serialization is the act of converting structured (objects in Java) data to an array of bytes.
-A program should then be able to recover the data through a reversal of the process (deserialization).
+Serialization is the act of converting structured data (objects in Java) to an array of bytes.
+A program should then be able to recover the structured data through a reversal of the process (deserialization).
 There are standard techniques to help since serialization is very common.
 Java includes its own mechanism for serialization through the `java.io.Serializable` interface and the `java.io.ObjectOutputStream` and `java.io.ObjectInputStream` classes.
 
@@ -79,20 +79,20 @@ Example example2 = (Example) stream.readObject();
 ```
 
 In the above code, serialization will be attempted for the entire object graph stemming from `example1`.
-This means that everything in the object graph needs to be of a type the implements `Serializable` or a primitive type (e.g. `long` or `byte[]`).
+Everything in the object graph needs to be of a type the implements `Serializable` or a primitive type (e.g. `long` or `byte[]`).
 The `Example` class has a single `Integer` data field.
-`Integer` implements `Serializable` and contains a single primitive `int` field.
-Therefore this condition is met for the `example1` object graph and serialization should succeed.
+`Integer` implements `Serializable`, and `Integer` contains a single primitive `int` field.
+Therefore this condition is met for the `example1` object graph, and serialization should succeed.
 
 ### Reflection
 Reflection is probably the most difficult aspect of this tutorial.
 It is a somewhat advanced feature set that usually isn't needed when making Java applications.
 At Java One 2016, I remember Mark Reinhold and Alex Buckley asking a room of Java developers if they use the Java reflection API - the majority kept their hands down.
 
-Reflection is not needed in the demo for the server code a Java developer would write.
+Reflection is not needed in the demo server code that a Java application developer would write.
 However, we will use reflection to create the exploit.
 
-Reflection is a type of metaprogramming that lets you obtain information on and even modify parts of your program.
+Reflection is a type of metaprogramming that lets you obtain information on and even modify parts of your program at runtime.
 A simple use of reflection is annotation processing where you are obtaining information on your program.
 Assume we have the following annotation definition and application to a class.
 ```java
@@ -107,13 +107,13 @@ public class TestClass { ... }
 ```
 You would then use code like this to extract the annotation value from `TestClass` at runtime.
 ```java
-CustomAnnotation annotation = Scratch.class.getAnnotation(CustomAnnotation.class);
+CustomAnnotation annotation = TestClass.class.getAnnotation(CustomAnnotation.class);
 if (null != annotation){
     String annotationValue = annotation.value();
 } 
 ```
 In general, you can do some pretty funky things with the reflection API.
-Another example, which we'll apply later, is implementing a interface at runtime.
+Another example, which we'll apply later, is implementing an interface at runtime.
 Here is how you can implement a `java.util.Collection` with reflection.
 ```java
 Collection dummyCollection = (Collection) Proxy.newProxyInstance(
@@ -174,7 +174,7 @@ The sin we committed is not validating user input.
 We take bytes that the user sends us and trust that they are what we expect them to be - a well-behaved instance of `Submission`.
 
 ### Exploit Development
-We will develop a client that will craft and send an exploit to the server.
+We will develop a client that crafts and sends an exploit to the server.
 Our goal will be to make the server launch the calculator application.
 This is a pretty classic example.
 The idea is if you can get calculator to launch, then you could launch whatever other program you wanted to.
@@ -257,7 +257,7 @@ The name `com.cisco.amp.client.Client$1` was given to the anonymous class we cre
 This is the server saying that it can't find the bytecode for `com.cisco.amp.client.Client$1`.
 
 Let's take a look at what we sent to the server.
-This is a `String` rendering of the exploit.
+This is a `String` rendering of the exploit attempt.
 ```text
 ï¿½ï¿½ sr com.cisco.amp.server.Submission>ï¿½ï¿½1_Gï¿½ L valuest Ljava/util/Collection;xpsr com.cisco.amp.client.Client$1ï¿½wï¿½:-ï¿½ï¿½  xr java.util.ArrayListxï¿½ï¿½ï¿½ï¿½aï¿½ I sizexp    w    x
 ```
@@ -269,7 +269,7 @@ It throws the above exception when it fails to find the class.
 
 This means our exploit won't work in its current form.
 The server needs to be able to access and execute our exploit code for it to work.
-We can accomplish this by only using classes that are already on the server.
+This can be accomplished by using classes that the server already has.
 In the next section we'll see how reflection can make the exploit work in this manner.
 
 #### Polymorphic and Reflective Exploit
@@ -304,11 +304,11 @@ Remember that we can't just make our own implementation of one.
 We can only use code on the server for this exploit.
 This is where the `groovy-all` dependency comes in.
 It contains two very useful classes: `org.codehaus.groovy.runtime.ConvertedClosure` and `org.codehaus.groovy.runtime.MethodClosure`.
-`ConvertedClosure` facilitates the reflective implementation of a class method with a `Closure` (like a Java lambda) you construct it with.
+`ConvertedClosure` implements `InvocationHandler`, and it facilitates the reflective implementation of a class method with a `Closure` (like a Java lambda) you construct it with.
 `MethodClosure` provides a `Closure` implementation for running a system command (like launching calculator).
 They both implement `Serializable`.
 
-Now, our reflective `Collection` implementation, with `Collection::iterator` overwritten, can be constructed like this.
+Now, our reflective `Collection` implementation, with a custom `Collection::iterator` method, can be constructed like this.
 ```java
 private static Collection<String> makeExploitCollection() {
 
@@ -343,12 +343,12 @@ Using a library or framework will give much better results as there will be edge
 However, in this scenario a couple things that might help are:
 * Only accept one specific collection implementation.
 * Ensure the `Collection` implementation and `Submission` are declared `final` in their class definitions.
-* Don't use generics in the definition of concrete classes that will be serialized. We didn't see why in this exercise, but you might able to figure it out after reading about [Java type erasure](https://docs.oracle.com/javase/tutorial/java/generics/erasure.html).
+* Don't use generics in the definition of concrete classes that will be serialized. We didn't see why in this exercise, but you can probably figure it out after reading about [Java type erasure](https://docs.oracle.com/javase/tutorial/java/generics/erasure.html).
 * ***This list is not exhaustive by any means.***
 
 These suggestions focus on preventing an attacker from supplying a class of their own design.
 Input validation is an extremely important measure to take in general though.
-Proper input validation can safe guard against common attacks (e.g. SQL injection). 
+Proper input validation can safe guard against other common attacks (e.g. SQL injection). 
 
 #### Avoid Java Serialization
 This ties into validating user input.
@@ -356,18 +356,19 @@ Java Serialization is a really powerful serialization technique with many featur
 It is often overkill and a more restrictive serialization method (e.g. JSON) would usually work just as well.
 Using and validating against a more restrictive serialization standard gives an attacker less wiggle room.
 In the demo, a JSON document containing an array would allow us to accept a collection of `Strings` in a much safer manner.
-It looks like this will be required sooner or later, as Java maintainers [want to remove](https://www.bleepingcomputer.com/news/security/oracle-plans-to-drop-java-serialization-support-the-source-of-most-security-bugs/) Java serialization.
+Additionally, it looks like this will be required sooner or later, as Java maintainers [want to remove](https://www.bleepingcomputer.com/news/security/oracle-plans-to-drop-java-serialization-support-the-source-of-most-security-bugs/) Java serialization.
 
 #### Better Manage Dependencies
 In the demo, we used classes from `groovy-all` to craft our exploit.
 This was an unnecessary dependency for our server, which means it should be removed.
 Removing unnecessary dependencies gives an attacker less to work with.
+You can even remove parts of the Java standard library, starting in Java 9, by [creating a custom Java runtime](https://openjdk.java.net/jeps/282).
 
 If a dependency is needed, then it should be kept up to date.
 Generally, the latest bug fix release will do, as long as the major version being used is still supported.
 This also applies to the `groovy-all` dependency.
 Newer versions contain safeguards so `ConvertedClosure` and `MethodClosure` can't be abused like in the demo.
-You can read about the groovy safeguards [here](http://groovy-lang.org/security.html).
+You can read about the groovy changes [here](http://groovy-lang.org/security.html).
 
 #### Use Minimal Permissions
 If you run the demo and look at a process tree listing, then it will look something like this.
