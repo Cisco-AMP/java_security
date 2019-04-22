@@ -52,7 +52,7 @@ useMap(map2);
 This is particularly useful since we can write the `useMap` method without caring  which `Map` implementation is passed into the method.
 
 ### Serialization
-Serialization is the act of taking data in a program and converting it to an array of bytes.
+Serialization is the act of converting structured (objects in Java) data to an array of bytes.
 A program should then be able to recover the data through a reversal of the process (deserialization).
 There are standard techniques to help since serialization is very common.
 Java includes its own mechanism for serialization through the `java.io.Serializable` interface and the `java.io.ObjectOutputStream` and `java.io.ObjectInputStream` classes.
@@ -67,23 +67,27 @@ public class Example implements Serializable {
 ```
 It can be serializaed and deserialized like this.
 ```java
-//serialization
+// serialization
 Example example1 = new Example(1);
 ByteArrayOutputStream byteStream = new ByteArrayOutputStream();
 new ObjectOutputStream(byteStream).writeObject(example1);
 byte[] bytes = byteStream.toByteArray();
 
-//deserialization
+// deserialization
 ObjectInputStream stream = new ObjectInputStream(new ByteArrayInputStream(bytes));
 Example example2 = (Example) stream.readObject();
 ```
 
-As long as class data fields (`private Integer attribute` in this case) also implement `Serialiazable` (`Integer` does), then serialization will succeed and be applied recursively to the data fields.
+In the above code, serialization will be attempted for the entire object graph stemming from `example1`.
+This means that everything in the object graph needs to be of a type the implements `Serializable` or a primitive type (e.g. `long` or `byte[]`).
+The `Example` class has a single `Integer` data field.
+`Integer` implements `Serializable` and contains a single primitive `int` field.
+Therefore this condition is met for the `example1` object graph and serialization should succeed.
 
 ### Reflection
 Reflection is probably the most difficult aspect of this tutorial.
-It is a somewhat advanced feature that Java programmers do not usually need.
-At Java One 2016, I remember Mark Reinhold and Alex Buckley asking a room of Java developers if they use the Java reflection API - an obvious majority kept their hands down.
+It is a somewhat advanced feature set that usually isn't needed when making Java applications.
+At Java One 2016, I remember Mark Reinhold and Alex Buckley asking a room of Java developers if they use the Java reflection API - the majority kept their hands down.
 
 Reflection is not needed in the demo for the server code a Java developer would write.
 However, we will use reflection to create the exploit.
@@ -120,9 +124,8 @@ Collection dummyCollection = (Collection) Proxy.newProxyInstance(
        }
 );
 ```
-The lambda in the above snippet implements the `java.lang.reflect.InvocationHandler` interface.
+The dummy lambda in the above snippet implements the `java.lang.reflect.InvocationHandler` interface.
 It is code that will be called on every method invocation and it must decide how to handle each different method call.
-Note that I'm asking for null pointer exceptions by returning `null` there.
 
 ## Remote Code Execution Demo
 
@@ -149,8 +152,8 @@ public class Submission implements Serializable {
     }
 }
 ```
-It does implement `Serializable` though.
-This allows the server to take bytes from an HTTP request and deserialize them to a `Submission` instance.
+This class implements `Serializable` to enable sending and receiving `Submission` instances over a network.
+Therefore the server can take bytes from HTTP requests and deserialize them to `Submission` instances.
 The `submit` method in `com.cisco.amp.server.SubmissionController` does this with the following code.
 ```java
 @PostMapping("/submit")
@@ -240,33 +243,36 @@ private static Collection<String> makeExploitCollection() {
 }
 ```
 
-However, we hit a bit of a snag if we try to send this exploit to the server.
+However, we hit a snag if we try to send this exploit to the server.
 The server prints an exception with a stacktrace.
 ```java
 java.lang.ClassNotFoundException: com.cisco.amp.client.Client$1
+    at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_191]
     ...
     at com.cisco.amp.server.SubmissionController.submit(SubmissionController.java:22) ~[classes!/:0.0.1-SNAPSHOT]
     ...
 ```
 
-The name `com.cisco.amp.client.Client$1` was given to the anonymous class we created in out client.
-This is the server saying that it can't find that class on the classpath.
-Therefore the code we want the server to run wasn't available.
-Here is the `String` rendering of the exploit we sent.
+The name `com.cisco.amp.client.Client$1` was given to the anonymous class we created in our client.
+This is the server saying that it can't find the bytecode for `com.cisco.amp.client.Client$1`.
+
+Let's take a look at what we sent to the server.
+This is a `String` rendering of the exploit.
 ```text
 ï¿½ï¿½ sr com.cisco.amp.server.Submission>ï¿½ï¿½1_Gï¿½ L valuest Ljava/util/Collection;xpsr com.cisco.amp.client.Client$1ï¿½wï¿½:-ï¿½ï¿½  xr java.util.ArrayListxï¿½ï¿½ï¿½ï¿½aï¿½ I sizexp    w    x
 ```
-We can see the references to the classes we use, but the actual classes and code are not there.
-In the next section, we'll see a way around this.
+We can see the references to classes we use, along with a little bit of data.
+The bytecode for these classes wasn't sent along though.
+Java deserialization uses classloaders to try finding the bytecode for these classes.
+In this case, a `java.net.URLClassLoader` instance is searching through jar files on the classpath to find `com.cisco.amp.client.Client$1`.
+It throws the above exception when it fails to find the class.
+
+This means our exploit won't work in its current form.
+The server needs to be able to access and execute our exploit code for it to work.
+We can accomplish this by only using classes that are already on the server.
+In the next section we'll see how reflection can make the exploit work in this manner.
 
 #### Polymorphic and Reflective Exploit
-With our previous `Collection` implementation, the server wouldn't run the custom code we created.
-This means that we can't send new code to the server.
-We must only use code that is already on the server.
-That is, we can only use classes that the server has on its classpath.
-The challenge is creating a custom `Collection` implementation without requiring the server to execute code that it doesn't already have.
-Reflection provides a solution here.
-
 Going forward, we will assume that the following dependency is present in the server.
 ```xml
 <dependency>
@@ -278,7 +284,7 @@ Going forward, we will assume that the following dependency is present in the se
 This is a little contrived, but not unreasonable considering that modern web apps are usually library soup.
 Additionally, bringing the dependency in will make this section much simpler.
 
-The idea here is to use reflection to implement our exploit `Collection` in a manner similar to the recap section.
+The idea here is to use reflection to implement our exploit `Collection` in a manner similar to the reflection recap section.
 Therefore, the exploit creation method will look something like this.
 ```java
 private static Collection<String> makeExploitCollection() {
@@ -302,7 +308,7 @@ It contains two very useful classes: `org.codehaus.groovy.runtime.ConvertedClosu
 `MethodClosure` provides a `Closure` implementation for running a system command (like launching calculator).
 They both implement `Serializable`.
 
-Now, our reflective `Collection` implementation , with `Collection::iterator` overwritten, can constructed like this.
+Now, our reflective `Collection` implementation, with `Collection::iterator` overwritten, can be constructed like this.
 ```java
 private static Collection<String> makeExploitCollection() {
 
@@ -319,10 +325,10 @@ private static Collection<String> makeExploitCollection() {
 Note that we are not creating new code for the server to execute.
 We are combining classes it already has.
 
-All this is code given in [our repo](https://github.com/Cisco-AMP/java_security).
+All the demo code is in [our repo](https://github.com/Cisco-AMP/java_security).
 If you run the demo, the server will launch calculator.
 When you run it, there is another exception printed to the server logs even though the exploit works.
-We would need a higher quality exploit to avoid the exception printing if we cared about stealth.
+An attacker would need a better exploit to avoid the exception printing (if they cared about stealth).
 
 ### Server Code Improvements
 
@@ -350,6 +356,7 @@ Java Serialization is a really powerful serialization technique with many featur
 It is often overkill and a more restrictive serialization method (e.g. JSON) would usually work just as well.
 Using and validating against a more restrictive serialization standard gives an attacker less wiggle room.
 In the demo, a JSON document containing an array would allow us to accept a collection of `Strings` in a much safer manner.
+It looks like this will be required sooner or later, as Java maintainers [want to remove](https://www.bleepingcomputer.com/news/security/oracle-plans-to-drop-java-serialization-support-the-source-of-most-security-bugs/) Java serialization.
 
 #### Better Manage Dependencies
 In the demo, we used classes from `groovy-all` to craft our exploit.
