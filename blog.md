@@ -6,7 +6,7 @@ Many topics and attacks in computer security rely on intimate knowledge of some 
 Therefore, it is sometimes a little overwhelming.
 We will see that security bugs and exploits leading to remote code execution are possible with relatively simple Java code.
 
-First, we will recap some relevant Java features (serialization, polymorphism and reflection).
+First, we will recap some relevant Java features (polymorphism, serialization and reflection).
 Then we'll dive into a demo that demonstrates a particular Java security hole which uses these features.
 Finally, we'll talk about lessons which can be applied to make your code more secure.
 
@@ -245,7 +245,7 @@ private static Collection<String> makeExploitCollection() {
 
 However, we hit a snag if we try to send this exploit to the server.
 The server prints an exception with a stacktrace.
-```java
+```text
 java.lang.ClassNotFoundException: com.cisco.amp.client.Client$1
     at java.net.URLClassLoader.findClass(URLClassLoader.java:382) ~[na:1.8.0_191]
     ...
