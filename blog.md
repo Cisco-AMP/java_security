@@ -17,7 +17,7 @@ Polymorphism or "one interface, many implementations" is a major feature of obje
 Java supports this behavior with interfaces, abstract classes and concrete classes.
 
 The `java.util.Map` interface is a good example to study.
-This interface defines method signatures that a class needs to implement in order to be considered a `Map`.
+This interface defines method signatures that a class must implement in order to be considered a `Map`.
 The Java standard library includes a few implementations of this interface like `java.util.HashMap` or its thread-safe equivalent `java.util.concurrent.ConcurrentHashMap`.
 Again, one interface, many implementations.
 
@@ -31,12 +31,12 @@ public class AnotherMap extends IntegerToStringMap { ... }
 public class YetAnotherMap extends IntegerToStringMap { ... }
 ```
 
-What if we wanted to prevent this?
+What if we want to prevent this?
 Java allows you to specify that a concrete class should not be extended with the `final` keyword.
 ```java
 public final class IntegerToStringMap implements Map<Integer, String> { ... }
 ```
-This would stop `AnotherMap` and `YetAnotherMap` from being accepted by the Java compiler or JVM.
+This would stop `AnotherMap` and `YetAnotherMap` from being accepted by the Java compiler or the JVM.
 
 How about using polymorphic classes?
 Continuing with the `Map` example, polymorphism in Java allows us to write code like this:
@@ -65,7 +65,7 @@ public class Example implements Serializable {
     public Integer getAttribute() { return attribute; }
 }
 ```
-It can be serializaed and deserialized like this.
+It can be serialized and deserialized like this.
 ```java
 // serialization
 Example example1 = new Example(1);
@@ -87,14 +87,14 @@ Therefore this condition is met for the `example1` object graph, and serializati
 ### Reflection
 Reflection is probably the most difficult aspect of this tutorial.
 It is a somewhat advanced feature set that usually isn't needed when making Java applications.
-At Java One 2016, I remember Mark Reinhold and Alex Buckley asking a room of Java developers if they use the Java reflection API - the majority kept their hands down.
+At Java One 2016, I remember Mark Reinhold and Alex Buckley asking a room of Java developers if they use the Java reflection API - most kept their hands down.
 
 Reflection is not needed in the demo server code that a Java application developer would write.
 However, we will use reflection to create the exploit.
 
 Reflection is a type of metaprogramming that lets you obtain information on and even modify parts of your program at runtime.
-A simple use of reflection is annotation processing where you are obtaining information on your program.
-Assume we have the following annotation definition and application to a class.
+A simple use of reflection is annotation processing where you are obtaining information about your program.
+Assume we have the following annotation definition and usage.
 ```java
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.TYPE)
@@ -131,7 +131,7 @@ It is code that will be called on every method invocation and it must decide how
 
 ### Server Setup
 
-This demo is built around a web server that accepts and deserializes a sumbission. 
+This demo is built around a web server that accepts and deserializes a submission. 
 The submission class isn't really anything special.
 Here it is, `com.cisco.amp.server.Submission`, stripped of comments.
 ```java
@@ -209,7 +209,7 @@ System.out.println(response.getBody());
 That is, create a `Submission` instance, serialize it and send it to the server.
 The interesting stuff, which we'll talk about now, is the contents of the `makeExploitCollection` method.
 
-First we should note that the server will need to call whatever custom code we put into our exploit `Collection`.
+First, we should note that the server will need to call whatever custom code we put into our exploit `Collection`.
 In this case, a `Collection` method is called by the server that we can override.
 Note that the server calls `Submission::toString` which looks like this.
 ```java
@@ -224,7 +224,7 @@ public String toString() {
 ```
 The for-each syntax above, `for (String entry : values)`, calls `Collection::iterator` behind the scenes.
 Therefore if we implement `Collection::iterator` with custom code, the server should run it.
-This should be simple enough if we extend `ArrayList<String>` and override that one method.
+This is simple enough if we extend `ArrayList<String>` and override that one method.
 Note that `ArrayList` implements `Serializable` so our extension will as well.
 The following code should launch calculator when the server runs it.
 ```java
@@ -297,7 +297,7 @@ private static Collection<String> makeExploitCollection() {
 }
 ```
 Here the `Collection` is reflectively implemented by `java.lang.reflect.Proxy`.
-This should work because `Proxy` implements `Serializable`, and it will be on the server's classpath (all of the Java standard library is).
+This should work because `Proxy` implements `Serializable`, and it will be on the server's classpath (all of the Java standard library is - usually).
 We still need an `InvocationHandler` implementation though.
 
 Remember that we can't just make our own implementation of one.
@@ -342,7 +342,7 @@ Generally, this isn't something that you want to do yourself.
 Using a library or framework will give much better results as there will be edge cases that you don't think of.
 However, in this scenario a couple things that might help are:
 * Only accept one specific collection implementation.
-* Ensure the `Collection` implementation and `Submission` are declared `final` in their class definitions.
+* Ensure the `Collection` implementation and `Submission` are declared `final` in their class definitions, so they can not be extended.
 * Don't use generics in the definition of concrete classes that will be serialized. We didn't see why in this exercise, but you can probably figure it out after reading about [Java type erasure](https://docs.oracle.com/javase/tutorial/java/generics/erasure.html).
 * ***This list is not exhaustive by any means.***
 
@@ -353,7 +353,8 @@ Proper input validation can safe guard against other common attacks (e.g. SQL in
 #### Avoid Java Serialization
 This ties into validating user input.
 Java Serialization is a really powerful serialization technique with many features.
-It is often overkill and a more restrictive serialization method (e.g. JSON) would usually work just as well.
+It is often overkill, and a more restrictive serialization method (e.g. JSON) would usually work just as well.
+
 Using and validating against a more restrictive serialization standard gives an attacker less wiggle room.
 In the demo, a JSON document containing an array would allow us to accept a collection of `Strings` in a much safer manner.
 Additionally, it looks like this will be required sooner or later, as Java maintainers [want to remove](https://www.bleepingcomputer.com/news/security/oracle-plans-to-drop-java-serialization-support-the-source-of-most-security-bugs/) Java serialization.
